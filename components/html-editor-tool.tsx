@@ -32,6 +32,7 @@ const EDITOR_SCRIPT = String.raw`
   ].join(",");
   let editMode = false;
   let selected = null;
+  let previousSpellcheck = null;
 
   function placeCaretAtPoint(element, clientX, clientY) {
     const selection = window.getSelection();
@@ -102,13 +103,20 @@ const EDITOR_SCRIPT = String.raw`
     if (selected) {
       selected.classList.remove("__htmlstudio-selected");
       selected.removeAttribute("contenteditable");
+      if (previousSpellcheck === null) {
+        selected.removeAttribute("spellcheck");
+      } else {
+        selected.setAttribute("spellcheck", previousSpellcheck);
+      }
       selected = null;
+      previousSpellcheck = null;
     }
   }
 
   function selectElement(element, clientX, clientY) {
     clearSelection();
     selected = element;
+    previousSpellcheck = selected.getAttribute("spellcheck");
     selected.classList.add("__htmlstudio-selected");
     selected.setAttribute("contenteditable", "true");
     selected.setAttribute("spellcheck", "false");
@@ -139,6 +147,9 @@ const EDITOR_SCRIPT = String.raw`
     document.body.classList.toggle("__htmlstudio-edit-mode", editMode);
     if (!editMode) {
       clearSelection();
+      document.querySelectorAll("[contenteditable]").forEach(function (element) {
+        element.removeAttribute("contenteditable");
+      });
     }
   }
 
@@ -381,7 +392,7 @@ export function HtmlEditorTool() {
       setFileName(file.name);
       setSourceHtml(html);
       setEditMode(false);
-      setStatus("HTML loaded. Turn on edit mode and click elements inside the page to edit them.");
+      setStatus("HTML loaded. Click Edit, then select elements in the preview to change them.");
     };
     reader.readAsText(file);
   }
@@ -396,18 +407,12 @@ export function HtmlEditorTool() {
 
     const clonedRoot = doc.documentElement.cloneNode(true) as HTMLElement;
     clonedRoot.querySelectorAll("[data-html-studio-helper]").forEach((node) => node.remove());
-  clonedRoot.querySelectorAll(".__htmlstudio-selected").forEach((node) => {
+    clonedRoot.querySelectorAll(".__htmlstudio-selected").forEach((node) => {
       node.classList.remove("__htmlstudio-selected");
-      if (node instanceof HTMLElement) {
-        node.removeAttribute("contenteditable");
-        node.removeAttribute("spellcheck");
-      }
     });
+    clonedRoot.removeAttribute("contenteditable");
     clonedRoot.querySelectorAll("[contenteditable]").forEach((node) => {
-      if (node instanceof HTMLElement) {
-        node.removeAttribute("contenteditable");
-        node.removeAttribute("spellcheck");
-      }
+      node.removeAttribute("contenteditable");
     });
 
     const fullHtml = `<!DOCTYPE html>\n${clonedRoot.outerHTML}`;
@@ -415,17 +420,44 @@ export function HtmlEditorTool() {
     setStatus("Edited HTML downloaded as one complete file.");
   }
 
+  function handleStartEditing() {
+    setEditMode(true);
+    setStatus("Edit mode on. Click an element in the preview to edit it.");
+  }
+
+  function handleSaveChanges() {
+    setEditMode(false);
+    setStatus("Changes saved in the preview. Download the edited HTML to export your file.");
+  }
+
   return (
     <div className="editor-tool">
       <div className="upload-card">
-        <label className="upload-field">
-          <span>Upload HTML File</span>
-          <input type="file" accept=".html,text/html" onChange={handleUpload} />
-        </label>
-        <p className="support-text">{status}</p>
+        <div className="upload-copy">
+          <span className="section-kicker">01 / SOURCE FILE</span>
+          <h2>Bring your page in.</h2>
+          <p>Choose a complete HTML document to start editing.</p>
+        </div>
+        <div className="upload-control">
+          <label className="upload-field">
+            <span>Choose HTML file</span>
+            <input type="file" accept=".html,text/html" onChange={handleUpload} />
+          </label>
+          <p className="support-text" role="status" aria-live="polite">{status}</p>
+        </div>
       </div>
 
       <div className="preview-stage">
+        <div className="preview-header">
+          <div>
+            <span className="section-kicker">02 / CANVAS</span>
+            <h2>Live preview</h2>
+          </div>
+          <span className={`preview-state ${sourceHtml ? "loaded" : ""}`}>
+            <span className="preview-state-dot" aria-hidden="true" />
+            {sourceHtml ? "Page loaded" : "Waiting for a file"}
+          </span>
+        </div>
         <div className={`device-frame ${deviceMode}`}>
           {sourceHtml ? (
             <iframe
@@ -437,38 +469,58 @@ export function HtmlEditorTool() {
             />
           ) : (
             <div className="empty-state">
-              <h2>Drop in a full HTML file</h2>
-              <p>The uploaded page will render here in an isolated iframe for direct visual editing.</p>
+              <div className="empty-mark" aria-hidden="true">
+                <span>&lt;</span><i /><span>/&gt;</span>
+              </div>
+              <h3>Your page starts here</h3>
+              <p>Choose an HTML file above to see it rendered in your canvas.</p>
             </div>
           )}
         </div>
       </div>
 
       <div className="floating-toolbar">
-        <button
-          type="button"
-          className={`toolbar-button ${editMode ? "active" : ""}`}
-          onClick={() => setEditMode((current) => !current)}
-          disabled={!sourceHtml}
-        >
-          {editMode ? "Edit Mode: ON" : "Edit Mode: OFF"}
-        </button>
-
-        <button type="button" className="toolbar-button primary" onClick={handleDownload} disabled={!sourceHtml}>
-          Download Edited HTML
-        </button>
-
-        <div className="device-switcher" aria-label="Device preview switch">
+        <div className="device-switcher" role="group" aria-label="Preview size">
+          <span className="control-label">VIEW</span>
           {(["desktop", "tablet", "mobile"] as DeviceMode[]).map((mode) => (
             <button
               key={mode}
               type="button"
-              className={`toolbar-button ${deviceMode === mode ? "active" : ""}`}
+              className={`toolbar-button device-button ${deviceMode === mode ? "active" : ""}`}
               onClick={() => setDeviceMode(mode)}
+              aria-pressed={deviceMode === mode}
             >
               {mode[0].toUpperCase() + mode.slice(1)}
             </button>
           ))}
+        </div>
+
+        <div className="edit-actions">
+          <button
+            type="button"
+            className={`toolbar-button ${editMode ? "active" : ""}`}
+            onClick={handleStartEditing}
+            aria-pressed={editMode}
+            disabled={!sourceHtml || editMode}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            className="toolbar-button"
+            onClick={handleSaveChanges}
+            disabled={!sourceHtml || !editMode}
+          >
+            Save changes
+          </button>
+          <button
+            type="button"
+            className="toolbar-button primary"
+            onClick={handleDownload}
+            disabled={!sourceHtml || editMode}
+          >
+            Download HTML <span aria-hidden="true">↓</span>
+          </button>
         </div>
       </div>
     </div>

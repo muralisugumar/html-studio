@@ -154,16 +154,23 @@ export function HtmlSplitterTool() {
   return (
     <div className="splitter-tool">
       <div className="splitter-actions">
-        <label className="upload-field">
-          <span>Upload HTML File</span>
-          <input type="file" accept=".html,text/html" onChange={handleFileChange} />
-        </label>
-        <button type="button" className="process-button" onClick={handleProcess} disabled={!file}>
-          Process File
-        </button>
+        <div className="upload-copy">
+          <span className="section-kicker">01 / SOURCE FILE</span>
+          <h2>Separate the pieces.</h2>
+          <p>Extract the body, styles, scripts, and page sections.</p>
+        </div>
+        <div className="splitter-controls">
+          <label className="upload-field">
+            <span>Choose HTML file</span>
+            <input type="file" accept=".html,text/html" onChange={handleFileChange} />
+          </label>
+          <button type="button" className="process-button" onClick={handleProcess} disabled={!file}>
+            Process file <span aria-hidden="true">↗</span>
+          </button>
+        </div>
       </div>
 
-      <p className="support-text">{status}</p>
+      <p className="support-text splitter-status" role="status" aria-live="polite">{status}</p>
 
       <div className="output-grid">
         <OutputPanel
